@@ -346,7 +346,7 @@ function drawOverlay() {
     ctx.font = '600 15px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 4;
     ctx.strokeText(txt, W / 2, H - 14); ctx.fillText(txt, W / 2, H - 14);
     if (calMode) {
-      const hint = '1 dito ↔ interasse · 1 dito ↕ altezza · 2 dita = zoom · doppio tocco = fine';
+      const hint = 'Tocca ai lati, lontano dalla pinzetta · 1 dito ↔ interasse · 1 dito ↕ altezza · 2 dita = zoom · doppio tocco = fine';
       ctx.font = '500 13px system-ui, sans-serif';
       ctx.strokeText(hint, W / 2, 20); ctx.fillText(hint, W / 2, 20);
     }
@@ -356,6 +356,7 @@ function drawOverlay() {
 // ---------- modalità VR ----------
 async function enterVR(withCal) {
   calMode = !!withCal;
+  keepAwake();
   await enableGyro(); // dentro il gesto: su iPhone chiede il permesso
   try { if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch (e) {}
   try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); } catch (e) {}
@@ -382,6 +383,32 @@ function exitVR() {
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && mode === 'vr') exitVR(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && mode === 'vr') exitVR(); });
 function checkOrientation() { $('#rotate').hidden = !(mode === 'vr' && window.innerWidth < window.innerHeight); }
+
+// ---------- schermo sempre acceso ----------
+let wakeLock = null, noSleepVideo = null;
+const TINY_MP4 = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAOEbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAB9AAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAq50cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAB9AAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAABAAAAAQAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAfQAAAgAAABAAAAAAImbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAAAgABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAAB0W1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAZFzdGJsAAAAwXN0c2QAAAAAAAAAAQAAALFhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAABAAEABIAAAASAAAAAAAAAABFUxhdmM2MC4zMS4xMDIgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAAN2F2Y0MBZAAK/+EAGWdkAAqscgRewEQAAAMABAAAAwAgPEiWEYABAAdo6EOBlLIs/fj4AAAAABBwYXNwAAAAAQAAAAEAAAAUYnRydAAAAAAAAAx8AAAMfAAAABhzdHRzAAAAAAAAAAEAAAAIAAAQAAAAABRzdHNzAAAAAAAAAAEAAAABAAAAOGN0dHMAAAAAAAAABQAAAAEAACAAAAAAAQAAgAAAAAABAAAwAAAAAAIAAAAAAAAAAwAAEAAAAAAcc3RzYwAAAAAAAAABAAAAAQAAAAgAAAABAAAANHN0c3oAAAAAAAAAAAAAAAgAAALEAAAADQAAAA0AAAANAAAADQAAAA0AAAANAAAADQAAABRzdGNvAAAAAAAAAAEAAAO0AAAAYnVkdGEAAABabWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAtaWxzdAAAACWpdG9vAAAAHWRhdGEAAAABAAAAAExhdmY2MC4xNi4xMDAAAAAIZnJlZQAAAydtZGF0AAACrwYF//+r3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NCByMzEwOCAzMWUxOWY5IC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAyMyAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTEgcmVmPTE2IGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDM6MHgxMzMgbWU9dW1oIHN1Ym1lPTEwIHBzeT0xIHBzeV9yZD0xLjAwOjAuMDAgbWl4ZWRfcmVmPTEgbWVfcmFuZ2U9MjQgY2hyb21hX21lPTEgdHJlbGxpcz0yIDh4OGRjdD0xIGNxbT0wIGRlYWR6b25lPTIxLDExIGZhc3RfcHNraXA9MSBjaHJvbWFfcXBfb2Zmc2V0PS0yIHRocmVhZHM9MSBsb29rYWhlYWRfdGhyZWFkcz0xIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTggYl9weXJhbWlkPTIgYl9hZGFwdD0yIGJfYmlhcz0wIGRpcmVjdD0zIHdlaWdodGI9MSBvcGVuX2dvcD0wIHdlaWdodHA9MiBrZXlpbnQ9MjUwIGtleWludF9taW49NCBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTYwIHJjPWNyZiBtYnRyZWU9MSBjcmY9NTEuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAAA1liIEAAp/9GlvAo7z5AAAACUGaCO2IIf/RgAAAAAlBnhBnEEv/7IEAAAAJAZ4YJogh/+6AAAAACQGeGEaIIf/ugQAAAAkBnhiNSCH/7oEAAAAJAZ4YrUgh/+6BAAAACQGeGM1IIf/ugQ==';
+async function keepAwake() {
+  if (document.visibilityState !== 'visible') return;
+  try {
+    if ('wakeLock' in navigator) {
+      if (wakeLock) return;
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+      return;
+    }
+  } catch (e) { /* passa al video di riserva */ }
+  try {
+    if (!noSleepVideo) {
+      noSleepVideo = document.createElement('video');
+      noSleepVideo.setAttribute('playsinline', ''); noSleepVideo.muted = true; noSleepVideo.loop = true;
+      noSleepVideo.src = TINY_MP4; noSleepVideo.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none';
+      document.body.appendChild(noSleepVideo);
+    }
+    await noSleepVideo.play();
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+window.addEventListener('pointerdown', () => keepAwake(), { once: true });
 
 // ---------- interfaccia ----------
 let uiTimer = null;
