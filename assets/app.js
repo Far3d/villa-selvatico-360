@@ -1,0 +1,431 @@
+// Villa Selvatico 360 — visore per smartphone e occhiali VR a lenti fisse (FAR3D)
+import * as THREE from './three.module.min.js';
+
+const $ = (s) => document.querySelector(s);
+const DEG = Math.PI / 180;
+const PANOS = window.VS_PANOS || {};
+const params = new URLSearchParams(location.search);
+const panoId = PANOS[params.get('p')] ? params.get('p') : Object.keys(PANOS)[0];
+const P = PANOS[panoId];
+
+// ---------- calibrazione occhiali (salvata sul telefono) ----------
+const CAL_KEY = 'vs360.cal.v1';
+const CAL_DEFAULT = {
+  pxmm: 6.0,   // pixel CSS per millimetro di schermo
+  sep: 59,     // interasse lenti (mm) - misurato sugli occhiali FAR3D (foto col metro)
+  focal: 45,   // focale/zoom (mm)
+  vert: 0,     // altezza lenti rispetto al centro dello schermo (mm, + verso il bordo superiore)
+  diam: 34,    // diametro utile della lente (mm) - misurato
+  mask: false, // maschera circolare
+  target: false // mira di calibrazione in VR
+};
+let cal = { ...CAL_DEFAULT };
+try {
+  const saved = JSON.parse(localStorage.getItem(CAL_KEY) || 'null');
+  if (saved && typeof saved === 'object') cal = { ...CAL_DEFAULT, ...saved };
+} catch (e) { /* storage non disponibile */ }
+function saveCal() { try { localStorage.setItem(CAL_KEY, JSON.stringify(cal)); } catch (e) {} }
+
+// ---------- scena ----------
+const canvas = $('#c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.5));
+renderer.setSize(window.innerWidth, window.innerHeight, false);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.autoClear = false;
+const maxAniso = renderer.capabilities.getMaxAnisotropy();
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 100);
+scene.add(camera);
+
+// Sei piani che formano un cubo visto dall'interno. Ogni faccia è già renderizzata
+// come la si vede dal centro: f (-Z), b (+Z), r (+X), l (-X), u (+Y), d (-Y).
+const FACES = {
+  f: { pos: [0, 0, -1], rot: [0, 0, 0] },
+  b: { pos: [0, 0, 1], rot: [0, Math.PI, 0] },
+  r: { pos: [1, 0, 0], rot: [0, -Math.PI / 2, 0] },
+  l: { pos: [-1, 0, 0], rot: [0, Math.PI / 2, 0] },
+  u: { pos: [0, 1, 0], rot: [Math.PI / 2, 0, 0] },
+  d: { pos: [0, -1, 0], rot: [-Math.PI / 2, 0, 0] }
+};
+const MARGIN = 2; // overscan in px usato nella generazione delle facce
+const cube = new THREE.Group();
+cube.scale.setScalar(50);
+scene.add(cube);
+const faceMesh = {};
+for (const [k, f] of Object.entries(FACES)) {
+  const g = new THREE.PlaneGeometry(2, 2);
+  const m = new THREE.MeshBasicMaterial({ color: 0x1a1b20 });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.position.set(...f.pos);
+  mesh.rotation.set(...f.rot);
+  cube.add(mesh);
+  faceMesh[k] = mesh;
+}
+function setFaceUV(mesh, N) {
+  const uv = mesh.geometry.attributes.uv;
+  const a = MARGIN / N, b = 1 - MARGIN / N;
+  // PlaneGeometry uv: (0,1) (1,1) (0,0) (1,0)
+  uv.setXY(0, a, b); uv.setXY(1, b, b); uv.setXY(2, a, a); uv.setXY(3, b, a);
+  uv.needsUpdate = true;
+}
+
+const loader = new THREE.TextureLoader();
+let loadedCount = 0, totalCount = 0;
+function loadLevel(N, onDone) {
+  let left = 6;
+  for (const k of Object.keys(FACES)) {
+    loader.load(`pano/${panoId}/${N}_${k}.jpg`, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = maxAniso;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      const mesh = faceMesh[k];
+      const old = mesh.material.map;
+      mesh.material.map = tex;
+      mesh.material.color.set(0xffffff);
+      mesh.material.needsUpdate = true;
+      setFaceUV(mesh, N);
+      if (old) old.dispose();
+      loadedCount++; updateProgress();
+      if (--left === 0 && onDone) onDone();
+      needsRender = true;
+    }, undefined, () => { loadedCount++; updateProgress(); if (--left === 0 && onDone) onDone(); });
+  }
+}
+const levels = P.levels || [512, 2048];
+totalCount = 6 * levels.length;
+function updateProgress() {
+  const bar = $('#pb');
+  if (bar) bar.style.width = Math.round(100 * loadedCount / totalCount) + '%';
+  if (loadedCount >= 6) $('#ld').classList.add('gone');
+}
+(function chain(i) {
+  if (i >= levels.length) return;
+  loadLevel(levels[i], () => chain(i + 1));
+})(0);
+
+// ---------- orientamento: trascinamento + giroscopio ----------
+let mode = 'mono';          // 'mono' | 'vr'
+let gyroOn = false, gyroAvailable = false, gyroGranted = false;
+let needsRender = true;
+const look = { yaw: P.yaw0 * DEG || 0, pitch: 0 }; // modalità trascinamento
+let yawOffset = 0;                                   // correzione manuale con giroscopio
+let monoFov = 75;
+
+// --- giroscopio (porting di DeviceOrientationControls di three.js) ---
+const device = { alpha: null, beta: null, gamma: null };
+let screenAngle = 0;
+function readScreenAngle() {
+  const a = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle
+    : (typeof window.orientation === 'number' ? window.orientation : 0);
+  screenAngle = a;
+}
+readScreenAngle();
+window.addEventListener('orientationchange', () => { setTimeout(() => { readScreenAngle(); onResize(); }, 120); });
+if (screen.orientation) screen.orientation.addEventListener('change', () => { readScreenAngle(); onResize(); });
+
+const _zee = new THREE.Vector3(0, 0, 1);
+const _euler = new THREE.Euler();
+const _q0 = new THREE.Quaternion();
+const _q1 = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2); // -PI/2 attorno a X
+const deviceQuat = new THREE.Quaternion();
+function updateDeviceQuat() {
+  const alpha = device.alpha != null ? device.alpha * DEG : 0;
+  const beta = device.beta != null ? device.beta * DEG : 0;
+  const gamma = device.gamma != null ? device.gamma * DEG : 0;
+  const orient = screenAngle * DEG;
+  _euler.set(beta, alpha, -gamma, 'YXZ');
+  deviceQuat.setFromEuler(_euler);
+  deviceQuat.multiply(_q1);
+  deviceQuat.multiply(_q0.setFromAxisAngle(_zee, -orient));
+}
+function onDeviceOrientation(e) {
+  if (e.alpha == null && e.beta == null && e.gamma == null) return;
+  device.alpha = e.alpha; device.beta = e.beta; device.gamma = e.gamma;
+  gyroAvailable = true;
+  needsRender = true;
+}
+async function enableGyro() {
+  if (gyroGranted) { gyroOn = true; updateUI(); return true; }
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const r = await DeviceOrientationEvent.requestPermission(); // iOS: deve avvenire dentro il tocco
+      if (r !== 'granted') { toast('Giroscopio non autorizzato: puoi trascinare con il dito.'); return false; }
+    }
+    window.addEventListener('deviceorientation', onDeviceOrientation, true);
+    gyroGranted = true; gyroOn = true;
+    // dopo 1,5 s senza dati: nessun sensore (es. computer)
+    setTimeout(() => { if (!gyroAvailable) { gyroOn = false; updateUI(); toast('Nessun giroscopio rilevato: usa il trascinamento.'); } }, 1500);
+    updateUI();
+    return true;
+  } catch (err) {
+    toast('Giroscopio non disponibile su questo dispositivo.');
+    return false;
+  }
+}
+function disableGyro() { gyroOn = false; updateUI(); needsRender = true; }
+
+const _fwd = new THREE.Vector3();
+function cameraQuaternion() {
+  if (gyroOn && gyroAvailable) {
+    updateDeviceQuat();
+    _q0.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawOffset);
+    camera.quaternion.copy(_q0).multiply(deviceQuat);
+  } else {
+    look.pitch = Math.max(-85 * DEG, Math.min(85 * DEG, look.pitch));
+    camera.quaternion.setFromEuler(new THREE.Euler(look.pitch, look.yaw, 0, 'YXZ'));
+  }
+}
+// ricentra: la direzione guardata ora diventa il centro (yaw0) del panorama
+function recenter() {
+  if (gyroOn && gyroAvailable) {
+    updateDeviceQuat();
+    _fwd.set(0, 0, -1).applyQuaternion(deviceQuat);
+    const yawDev = Math.atan2(-_fwd.x, -_fwd.z);
+    yawOffset = (P.yaw0 * DEG || 0) - yawDev;
+  } else {
+    look.yaw = P.yaw0 * DEG || 0; look.pitch = 0;
+  }
+  needsRender = true;
+}
+
+// --- puntatore: trascina (mono) / correzione yaw (giroscopio) / pinch zoom ---
+let dragging = false, lastX = 0, lastY = 0, pinchDist = 0, lastTap = 0, moved = 0;
+canvas.addEventListener('pointerdown', (e) => {
+  dragging = true; moved = 0; lastX = e.clientX; lastY = e.clientY; canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY; lastX = e.clientX; lastY = e.clientY;
+  moved += Math.abs(dx) + Math.abs(dy);
+  const fov = (mode === 'vr') ? currentVrFov() : monoFov;
+  const k = (fov * DEG) / window.innerHeight; // radianti per pixel
+  if (gyroOn && gyroAvailable) {
+    yawOffset += dx * k;
+  } else {
+    look.yaw += dx * k; look.pitch += dy * k;
+  }
+  needsRender = true;
+});
+function endDrag(e) {
+  if (!dragging) return; dragging = false;
+  if (moved < 8) { // tocco semplice
+    const now = performance.now();
+    if (now - lastTap < 320) { lastTap = 0; if (mode === 'vr') exitVR(); else toggleUI(); }
+    else { lastTap = now; if (mode === 'vr') recenter(); else showUI(); }
+  }
+}
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('touchstart', (e) => { if (e.touches.length === 2) pinchDist = dist(e.touches); }, { passive: true });
+canvas.addEventListener('touchmove', (e) => {
+  if (e.touches.length === 2 && mode === 'mono') {
+    const d = dist(e.touches); if (pinchDist) { monoFov = Math.max(45, Math.min(110, monoFov * pinchDist / d)); needsRender = true; } pinchDist = d;
+  }
+}, { passive: true });
+canvas.addEventListener('wheel', (e) => { if (mode === 'mono') { monoFov = Math.max(45, Math.min(110, monoFov + e.deltaY * 0.03)); needsRender = true; } }, { passive: true });
+function dist(t) { const dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.hypot(dx, dy); }
+
+// ---------- rendering ----------
+function currentVrFov() {
+  const H = window.innerHeight; const fPx = cal.focal * cal.pxmm;
+  return 2 * Math.atan((H / 2) / fPx) / DEG;
+}
+function eyeGeometry() {
+  const W = window.innerWidth, H = window.innerHeight;
+  const sepPx = cal.sep * cal.pxmm;
+  const cy = H / 2 - cal.vert * cal.pxmm; // coordinate CSS (y verso il basso): + = verso il bordo superiore
+  return { W, H, sepPx, cxL: W / 2 - sepPx / 2, cxR: W / 2 + sepPx / 2, cy };
+}
+function render() {
+  cameraQuaternion();
+  const W = window.innerWidth, H = window.innerHeight;
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, W, H);
+  renderer.clear(true, true, false);
+  if (mode === 'vr' && W >= H) {
+    const g = eyeGeometry();
+    const fov = currentVrFov();
+    renderer.setScissorTest(true);
+    for (const [i, cx] of [g.cxL, g.cxR].entries()) {
+      const x0 = cx - g.sepPx / 2;
+      const y0 = (H - g.cy) - H / 2; // three.js: origine in basso
+      renderer.setViewport(x0, y0, g.sepPx, H);
+      renderer.setScissor(i === 0 ? 0 : W / 2, 0, W / 2, H); // ogni occhio resta nella sua metà
+      camera.fov = fov; camera.aspect = g.sepPx / H; camera.updateProjectionMatrix();
+      renderer.render(scene, camera);
+    }
+    renderer.setScissorTest(false);
+  } else {
+    camera.fov = monoFov; camera.aspect = W / H; camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+  }
+}
+function loop() {
+  requestAnimationFrame(loop);
+  if (needsRender || (gyroOn && gyroAvailable)) { render(); needsRender = false; }
+}
+function onResize() {
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  drawOverlay();
+  checkOrientation();
+  needsRender = true;
+}
+window.addEventListener('resize', onResize);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
+
+// ---------- overlay 2D: maschera circolare e mira di calibrazione ----------
+const ov = $('#ov');
+function drawOverlay() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const W = window.innerWidth, H = window.innerHeight;
+  ov.width = Math.round(W * dpr); ov.height = Math.round(H * dpr);
+  ov.style.width = W + 'px'; ov.style.height = H + 'px';
+  const ctx = ov.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (mode !== 'vr' || W < H) { ov.hidden = true; return; }
+  ov.hidden = !(cal.mask || cal.target);
+  if (ov.hidden) return;
+  const g = eyeGeometry();
+  const rLens = (cal.diam / 2) * cal.pxmm;
+  if (cal.mask) {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'destination-out';
+    for (const cx of [g.cxL, g.cxR]) {
+      const r = rLens * 1.35;
+      const grad = ctx.createRadialGradient(cx, g.cy, r * 0.85, cx, g.cy, r);
+      grad.addColorStop(0, 'rgba(0,0,0,1)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(cx, g.cy, r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  if (cal.target) {
+    ctx.lineWidth = 2;
+    for (const [i, cx] of [g.cxL, g.cxR].entries()) {
+      ctx.strokeStyle = 'rgba(255,255,255,.95)';
+      ctx.beginPath(); ctx.arc(cx, g.cy, rLens, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, g.cy, rLens / 2, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - rLens * 1.3, g.cy); ctx.lineTo(cx + rLens * 1.3, g.cy);
+      ctx.moveTo(cx, g.cy - rLens * 1.3); ctx.lineTo(cx, g.cy + rLens * 1.3); ctx.stroke();
+      ctx.strokeStyle = '#d40000';
+      ctx.beginPath(); ctx.arc(cx, g.cy, 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.font = '600 12px system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(i === 0 ? 'SX' : 'DX', cx, g.cy + rLens + 18);
+      ctx.fillText(`${cal.sep} mm · f ${cal.focal} · ${cal.pxmm.toFixed(2)} px/mm`, cx, g.cy - rLens - 10);
+    }
+    // linea di separazione
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H); ctx.stroke();
+  }
+}
+
+// ---------- modalità VR ----------
+async function enterVR() {
+  await enableGyro(); // dentro il gesto: su iPhone chiede il permesso
+  try { if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch (e) {}
+  try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); } catch (e) {}
+  mode = 'vr';
+  document.body.classList.add('vr');
+  hideUI(true);
+  readScreenAngle();
+  onResize();
+  recenter();
+  toast('Aggancia gli occhiali. Tocco: ricentra · doppio tocco: esci', 3500);
+}
+function exitVR() {
+  mode = 'mono';
+  document.body.classList.remove('vr');
+  try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); } catch (e) {}
+  try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) {}
+  $('#rotate').hidden = true;
+  onResize();
+  showUI();
+}
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && mode === 'vr') exitVR(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && mode === 'vr') exitVR(); });
+function checkOrientation() { $('#rotate').hidden = !(mode === 'vr' && window.innerWidth < window.innerHeight); }
+
+// ---------- interfaccia ----------
+let uiTimer = null;
+function showUI() { document.body.classList.remove('ui-hidden'); clearTimeout(uiTimer); if (mode === 'mono') uiTimer = setTimeout(() => hideUI(), 5000); }
+function hideUI(now) { document.body.classList.add('ui-hidden'); clearTimeout(uiTimer); }
+function toggleUI() { document.body.classList.contains('ui-hidden') ? showUI() : hideUI(); }
+let toastTimer = null;
+function toast(msg, ms = 2600) {
+  const t = $('#toast'); t.textContent = msg; t.hidden = false; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.classList.remove('show'); }, ms);
+}
+function updateUI() {
+  $('#bGyro').classList.toggle('on', gyroOn);
+  $('#bGyro').setAttribute('aria-pressed', gyroOn ? 'true' : 'false');
+}
+$('#bGyro').addEventListener('click', () => { gyroOn ? disableGyro() : enableGyro(); showUI(); });
+$('#bVR').addEventListener('click', enterVR);
+$('#bFull').addEventListener('click', async () => {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+    else toast('Su iPhone: aggiungi la pagina alla schermata Home per lo schermo intero.');
+  } catch (e) { toast('Schermo intero non disponibile qui.'); }
+  showUI();
+});
+$('#bCenter').addEventListener('click', () => { recenter(); showUI(); });
+$('#bCal').addEventListener('click', () => { openCal(); });
+$('#calClose').addEventListener('click', closeCal);
+$('#calReset').addEventListener('click', () => { cal = { ...CAL_DEFAULT }; saveCal(); syncCalUI(); drawOverlay(); needsRender = true; });
+
+// pannello di calibrazione
+const calPanel = $('#cal');
+function openCal() { calPanel.hidden = false; document.body.classList.add('cal-open'); syncCalUI(); clearTimeout(uiTimer); }
+function closeCal() { calPanel.hidden = true; document.body.classList.remove('cal-open'); showUI(); }
+const calFields = ['pxmm', 'sep', 'focal', 'vert', 'diam'];
+function syncCalUI() {
+  for (const k of calFields) {
+    const r = $('#r_' + k); if (!r) continue;
+    r.value = cal[k];
+    $('#v_' + k).textContent = fmt(k, cal[k]);
+  }
+  $('#t_mask').checked = !!cal.mask; $('#t_target').checked = !!cal.target;
+  drawCard();
+}
+function fmt(k, v) {
+  v = Number(v);
+  if (k === 'pxmm') return v.toFixed(2) + ' px/mm';
+  if (k === 'vert') return (v > 0 ? '+' : '') + v.toFixed(1) + ' mm';
+  return (k === 'sep' ? v.toFixed(1) : v.toFixed(0)) + ' mm';
+}
+for (const k of calFields) {
+  const r = $('#r_' + k); if (!r) continue;
+  r.addEventListener('input', () => { cal[k] = Number(r.value); $('#v_' + k).textContent = fmt(k, cal[k]); saveCal(); drawCard(); drawOverlay(); needsRender = true; });
+}
+$('#t_mask').addEventListener('change', (e) => { cal.mask = e.target.checked; saveCal(); drawOverlay(); });
+$('#t_target').addEventListener('change', (e) => { cal.target = e.target.checked; saveCal(); drawOverlay(); });
+// carta di credito ISO/IEC 7810 ID-1: 85,60 × 53,98 mm
+function drawCard() {
+  const c = $('#card'); if (!c) return;
+  const w = 85.6 * cal.pxmm, h = 53.98 * cal.pxmm;
+  const vertical = window.innerWidth < window.innerHeight; // in verticale la carta si appoggia in lungo
+  c.style.width = (vertical ? h : w) + 'px';
+  c.style.height = (vertical ? w : h) + 'px';
+}
+$('#calCardBtn').addEventListener('click', () => { $('#cardBox').hidden = !$('#cardBox').hidden; drawCard(); });
+
+// ---------- avvio ----------
+$('#ttl').textContent = `${P.year} · ${P.title}`;
+$('#sub').textContent = (P.place || '') + (P.n ? ` · vista ${P.n}` : '');
+document.title = `Villa Selvatico ${P.year} · ${P.title}`;
+// se arriva ?vr=1 (dal pulsante VR dell'indice) entra direttamente in VR al primo tocco
+if (params.get('vr') === '1') {
+  const go = $('#goVR'); go.hidden = false;
+  go.addEventListener('click', () => { go.hidden = true; enterVR(); }, { once: true });
+}
+canvas.addEventListener('pointerdown', () => { if (mode === 'mono') showUI(); });
+window.addEventListener('pagehide', () => { try { if (gyroOn) window.removeEventListener('deviceorientation', onDeviceOrientation, true); } catch (e) {} });
+updateUI();
+onResize();
+showUI();
+loop();
