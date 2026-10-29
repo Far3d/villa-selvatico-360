@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f1013">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="robots" content="noindex">
+<title>Villa Selvatico · visita 3D</title>
+<link rel="icon" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap">
+<style>
+:root{--bg:#0f1013;--panel:rgba(18,19,24,.86);--line:rgba(255,255,255,.14);--fg:#f2f1ee;--muted:#a2a4ab;--accent:#d40000;
+  --sans:"Jost",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--serif:"Cormorant Garamond",Georgia,"Times New Roman",serif;color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:15px/1.4 var(--sans);overflow:hidden;overscroll-behavior:none}
+canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+canvas#ov{position:fixed;inset:0;pointer-events:none}
+[hidden]{display:none!important}
+#ld{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg);z-index:30;transition:opacity .5s}
+#ld.gone{opacity:0;pointer-events:none}
+#ld img{width:120px;opacity:.9}
+#ld .bar{width:180px;height:2px;background:rgba(255,255,255,.12);overflow:hidden}
+#ld .bar>div{height:100%;width:0;background:var(--accent);transition:width .25s}
+#ld .t{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);text-align:center;padding:0 24px}
+#hd{position:fixed;left:0;right:0;top:0;display:flex;align-items:center;gap:14px;padding:calc(10px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 14px max(16px,env(safe-area-inset-left,0px));
+  background:linear-gradient(rgba(10,10,12,.75),rgba(10,10,12,0));z-index:10;transition:opacity .35s}
+#hd a.logo img{height:30px;display:block}
+#hd h1{margin:0;font:600 22px/1.05 var(--serif);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hd .sub{font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+#bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:2px;width:min(calc(100% - 20px),400px);padding:5px;border-radius:999px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:10;transition:opacity .35s,transform .35s}
+#bar button{appearance:none;border:0;background:transparent;color:var(--fg);font:500 11px/1 var(--sans);letter-spacing:.01em;padding:9px 2px 8px;border-radius:999px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden}
+#bar button svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+#bar button.on{background:rgba(255,255,255,.12)}
+#bar button.on::after{content:"";width:5px;height:5px;border-radius:50%;background:var(--accent);margin-top:-3px}
+#bar button.vr{background:var(--fg);color:#111}
+body.ui-hidden #hd,body.ui-hidden #bar,body.ui-hidden .arrow,body.ui-hidden #hint{opacity:0;pointer-events:none}
+body.ui-hidden #bar{transform:translateX(-50%) translateY(8px)}
+body.vr #hd,body.vr #bar,body.vr .arrow,body.vr #hint,body.vr #stick{display:none}
+.arrow{position:fixed;top:50%;transform:translateY(-50%);width:42px;height:42px;padding:0;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--fg);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;appearance:none;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:opacity .35s}
+.arrow svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#prev{left:calc(10px + env(safe-area-inset-left,0px))}
+#next{right:calc(10px + env(safe-area-inset-right,0px))}
+@media (orientation:landscape) and (max-height:520px){
+  #bar{left:auto;right:calc(10px + env(safe-area-inset-right,0px));bottom:auto;top:50%;transform:translateY(-50%);flex-direction:column;gap:2px;padding:5px;width:auto;max-height:calc(100% - 20px)}
+  #bar button{flex:0 0 auto;padding:7px 8px;min-width:64px;font-size:11px;gap:3px}
+  #bar button svg{width:18px;height:18px}
+  body.ui-hidden #bar{transform:translateY(-50%) translateX(8px)}
+  #next{right:calc(96px + env(safe-area-inset-right,0px))}
+  #toast{bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+}
+/* joystick virtuale: compare dove si appoggia il pollice */
+#stick{position:fixed;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.25);pointer-events:none;z-index:9}
+#knob{position:absolute;left:50%;top:50%;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.85);transform:translate(-50%,-50%)}
+#hint{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));font-size:12.5px;color:#fff;background:rgba(0,0,0,.45);padding:7px 12px;border-radius:8px;z-index:9;text-align:center;max-width:calc(100% - 32px);transition:opacity .35s;pointer-events:none}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:rgba(0,0,0,.72);color:#fff;padding:9px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .3s;z-index:20;max-width:calc(100% - 32px);text-align:center;pointer-events:none}
+#toast.show{opacity:1}
+body.vr #toast{bottom:44px}
+#rotate{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:25;text-align:center;padding:24px}
+#rotate svg{width:64px;height:64px;stroke:#fff;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+#rotate b{font:600 20px/1.2 var(--serif)} #rotate span{color:var(--muted);font-size:13px}
+#places{position:fixed;left:0;right:0;bottom:0;background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);border-radius:16px 16px 0 0;z-index:15;padding:14px max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+#places h2{margin:0 0 10px;font:600 20px/1.1 var(--serif)}
+#placesGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+#placesGrid button{appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--fg);text-align:left;padding:12px 12px;border-radius:10px;cursor:pointer;font:500 14px/1.2 var(--sans)}
+#places .row{display:flex;justify-content:flex-end;margin-top:10px}
+#places .row button{appearance:none;border:1px solid var(--fg);background:var(--fg);color:#111;font:500 13px/1 var(--sans);padding:10px 14px;border-radius:999px;cursor:pointer}
+</style>
+</head>
+<body class="ui-hidden">
+<div id="ld"><img src="img/far3d_white.png" alt="FAR3D"><div class="bar"><div id="pb"></div></div><div class="t" id="ldt">Villa Selvatico · visita 3D</div></div>
+<canvas id="c"></canvas>
+<canvas id="ov" hidden></canvas>
+<header id="hd">
+  <a class="logo" href="./" aria-label="Indice"><img src="img/far3d_mark_white.png" alt="FAR3D"></a>
+  <div class="tt"><h1>Villa Selvatico · la villa in 3D</h1><div class="sub">prototipo · modello 3D navigabile</div></div>
+</header>
+<nav id="bar" aria-label="Comandi">
+  <button id="bPlaces" title="Punti di partenza"><svg viewBox="0 0 24 24"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>Luoghi</button>
+  <button id="bGyro" aria-pressed="false" title="Giroscopio: la vista segue il telefono"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="9" ry="3.5"/><path d="M12 3v18"/></svg>Sensori</button>
+  <button id="bCenter" title="Rimetti dritta la vista"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>Ricentra</button>
+  <button id="bVR" class="vr" title="Modalità occhiali VR"><svg viewBox="0 0 24 24"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h13A2.5 2.5 0 0 1 21 8.5v6a2.5 2.5 0 0 1-2.5 2.5h-2.6a2 2 0 0 1-1.7-.9L13 14.5h-2l-1.2 1.6a2 2 0 0 1-1.7.9H5.5A2.5 2.5 0 0 1 3 14.5z"/><circle cx="8.5" cy="11.5" r="1.6"/><circle cx="15.5" cy="11.5" r="1.6"/></svg>VR</button>
+  <button id="bFull" title="Schermo intero"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Schermo</button>
+</nav>
+<button id="prev" class="arrow" aria-label="Luogo precedente"><svg viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
+<button id="next" class="arrow" aria-label="Luogo successivo"><svg viewBox="0 0 24 24"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"/></svg></button>
+<div id="stick" hidden><div id="knob"></div></div>
+<div id="hint">Pollice sinistro: cammina · destro: guarda intorno · due dita: zoom</div>
+<div id="toast" hidden></div>
+<div id="rotate" hidden><svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M2 12a10 10 0 0 1 4-8M22 12a10 10 0 0 1-4 8"/></svg><b>Ruota il telefono in orizzontale</b><span>Gli occhiali si agganciano sul lato lungo</span></div>
+<section id="places" hidden aria-label="Luoghi"><h2>Punti di partenza</h2><div id="placesGrid"></div><div class="row"><button id="placesClose">Chiudi</button></div></section>
+<script src="walk_config.js"></script>
+<script type="module" src="assets/walk.js"></script>
+</body>
+</html>
