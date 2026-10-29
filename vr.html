@@ -49,10 +49,11 @@ canvas#ov{position:fixed;inset:0;pointer-events:none}
 #hd .sub{font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* barra comandi */
-#bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:6px;
-  padding:6px;border-radius:999px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:10;transition:opacity .35s,transform .35s;max-width:calc(100% - 24px)}
-#bar button{appearance:none;border:0;background:transparent;color:var(--fg);font:500 12px/1 var(--sans);letter-spacing:.04em;padding:10px 12px;border-radius:999px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;min-width:58px}
-#bar button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+/* sei comandi in colonne uguali: devono stare anche su schermi da 360 px */
+#bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:2px;
+  width:min(calc(100% - 20px),460px);padding:5px;border-radius:999px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:10;transition:opacity .35s,transform .35s}
+#bar button{appearance:none;border:0;background:transparent;color:var(--fg);font:500 11px/1 var(--sans);letter-spacing:.01em;padding:9px 2px 8px;border-radius:999px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden}
+#bar button svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 #bar button.on{background:rgba(255,255,255,.12)}
 #bar button.on svg{stroke:#fff}
 #bar button.on::after{content:"";width:5px;height:5px;border-radius:50%;background:var(--accent);margin-top:-3px}
@@ -62,13 +63,27 @@ body.ui-hidden #hd,body.ui-hidden #bar{opacity:0;pointer-events:none}
 body.ui-hidden #bar{transform:translateX(-50%) translateY(8px)}
 body.vr #hd,body.vr #bar{display:none}
 
+/* frecce ai lati: vista precedente / successiva (solo in modalità normale, compaiono con i comandi) */
+.arrow{position:fixed;top:50%;transform:translateY(-50%);width:42px;height:42px;padding:0;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--fg);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;appearance:none;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:opacity .35s,transform .35s}
+.arrow svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.arrow:active{background:rgba(255,255,255,.18)}
+.arrow:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#prev{left:calc(10px + env(safe-area-inset-left,0px))}
+#next{right:calc(10px + env(safe-area-inset-right,0px))}
+body.ui-hidden .arrow{opacity:0;pointer-events:none}
+body.ui-hidden #prev{transform:translateY(-50%) translateX(-8px)}
+body.ui-hidden #next{transform:translateY(-50%) translateX(8px)}
+body.vr .arrow{display:none}
+
 /* in orizzontale la barra va sul bordo destro, in colonna: al centro del lato lungo c'è la pinzetta degli occhiali */
 @media (orientation:landscape) and (max-height:520px){
-  #bar{left:auto;right:calc(10px + env(safe-area-inset-right,0px));bottom:auto;top:50%;transform:translateY(-50%);flex-direction:column;gap:2px;padding:5px;max-height:calc(100% - 20px);max-width:none}
-  #bar button{padding:7px 8px;min-width:64px;font-size:11px;gap:3px}
+  #bar{left:auto;right:calc(10px + env(safe-area-inset-right,0px));bottom:auto;top:50%;transform:translateY(-50%);flex-direction:column;gap:2px;padding:5px;width:auto;max-height:calc(100% - 20px)}
+  #bar button{flex:0 0 auto;padding:7px 8px;min-width:64px;font-size:11px;gap:3px}
   #bar button svg{width:18px;height:18px}
   body.ui-hidden #bar{transform:translateY(-50%) translateX(8px)}
   #toast{bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+  #next{right:calc(96px + env(safe-area-inset-right,0px))} /* a sinistra della colonna dei comandi */
 }
 /* avvisi */
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:rgba(0,0,0,.72);color:#fff;padding:9px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .3s;z-index:20;max-width:calc(100% - 32px);text-align:center;pointer-events:none}
@@ -127,12 +142,15 @@ body.vr #toast{bottom:44px}
 
 <nav id="bar" aria-label="Comandi">
   <button id="bList" title="Elenco delle viste"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="7" rx="1.2"/><rect x="14" y="4" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/><rect x="14" y="14" width="7" height="7" rx="1.2"/></svg>Viste</button>
-  <button id="bGyro" aria-pressed="false" title="Giroscopio"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="9" ry="3.5"/><path d="M12 3v18"/></svg>Giroscopio</button>
+  <button id="bGyro" aria-pressed="false" title="Giroscopio: la vista segue i movimenti del telefono"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="9" ry="3.5"/><path d="M12 3v18"/></svg>Sensori</button>
   <button id="bCenter" title="Ricentra la vista"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>Ricentra</button>
   <button id="bVR" class="vr" title="Modalità occhiali VR"><svg viewBox="0 0 24 24"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h13A2.5 2.5 0 0 1 21 8.5v6a2.5 2.5 0 0 1-2.5 2.5h-2.6a2 2 0 0 1-1.7-.9L13 14.5h-2l-1.2 1.6a2 2 0 0 1-1.7.9H5.5A2.5 2.5 0 0 1 3 14.5z"/><circle cx="8.5" cy="11.5" r="1.6"/><circle cx="15.5" cy="11.5" r="1.6"/></svg>VR</button>
   <button id="bFull" title="Schermo intero"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Schermo</button>
   <button id="bCal" title="Calibrazione occhiali"><svg viewBox="0 0 24 24"><circle cx="7" cy="13" r="3.6"/><circle cx="17" cy="13" r="3.6"/><path d="M10.6 13h2.8M3.4 12l1.6-5h14l1.6 5"/></svg>Occhiali</button>
 </nav>
+
+<button id="prev" class="arrow" aria-label="Vista precedente" title="Vista precedente"><svg viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
+<button id="next" class="arrow" aria-label="Vista successiva" title="Vista successiva"><svg viewBox="0 0 24 24"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"/></svg></button>
 
 <div id="toast" hidden></div>
 <div id="rotate" hidden><svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M2 12a10 10 0 0 1 4-8M22 12a10 10 0 0 1-4 8"/></svg><b>Ruota il telefono in orizzontale</b><span>Gli occhiali si agganciano sul lato lungo</span></div>

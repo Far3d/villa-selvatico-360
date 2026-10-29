@@ -132,7 +132,7 @@ let pendingVR = false;      // avviato con ?vr=1: al primo tocco chiede schermo 
 let gyroOn = false, gyroAvailable = false, gyroGranted = false;
 let needsRender = true;
 const look = { yaw: 0, pitch: 0 };   // modalità trascinamento
-let yawOffset = 0;                    // correzione manuale con giroscopio
+let yawOffset = 0, pitchOffset = 0;   // correzione manuale con giroscopio (orizzontale e verticale); «Ricentra» la azzera
 let monoFov = 75;
 
 // --- giroscopio (porting di DeviceOrientationControls di three.js) ---
@@ -166,11 +166,19 @@ function updateDeviceQuat() {
 function onDeviceOrientation(e) {
   if (e.alpha == null && e.beta == null && e.gamma == null) return;
   device.alpha = e.alpha; device.beta = e.beta; device.gamma = e.gamma;
-  gyroAvailable = true;
+  if (!gyroAvailable) { gyroAvailable = true; alignGyroToLook(); } // primo dato: si continua dalla direzione già guardata
+  needsRender = true;
+}
+// porta il giroscopio sulla direzione corrente di look (nessun salto quando lo si attiva o arriva il primo dato)
+function alignGyroToLook() {
+  updateDeviceQuat();
+  _fwd.set(0, 0, -1).applyQuaternion(deviceQuat);
+  yawOffset = look.yaw - Math.atan2(-_fwd.x, -_fwd.z);
+  pitchOffset = 0;
   needsRender = true;
 }
 async function enableGyro() {
-  if (gyroGranted) { gyroOn = true; updateUI(); return true; }
+  if (gyroGranted) { gyroOn = true; if (gyroAvailable) alignGyroToLook(); updateUI(); return true; }
   try {
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       const r = await DeviceOrientationEvent.requestPermission(); // iOS: deve avvenire dentro il tocco
@@ -186,14 +194,29 @@ async function enableGyro() {
     return false;
   }
 }
-function disableGyro() { gyroOn = false; updateUI(); needsRender = true; }
+function disableGyro() {
+  if (gyroAvailable) { // il trascinamento riparte dalla direzione che si stava guardando
+    _fwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    look.yaw = Math.atan2(-_fwd.x, -_fwd.z); look.pitch = Math.asin(clamp(_fwd.y, -1, 1));
+  }
+  gyroOn = false; pitchOffset = 0; updateUI(); needsRender = true;
+}
 
 const _fwd = new THREE.Vector3();
+const _xAxis = new THREE.Vector3(1, 0, 0);
+const PITCH_MAX = 88 * DEG;
 function cameraQuaternion() {
   if (gyroOn && gyroAvailable) {
     updateDeviceQuat();
     _q0.setFromAxisAngle(_yAxis, yawOffset);
     camera.quaternion.copy(_q0).multiply(deviceQuat);
+    if (pitchOffset) {
+      // inclinazione aggiunta col dito, attorno all'asse orizzontale della vista; non oltre zenit e nadir
+      _fwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
+      const el = Math.asin(clamp(_fwd.y, -1, 1));
+      pitchOffset = clamp(pitchOffset, -PITCH_MAX - el, PITCH_MAX - el);
+      camera.quaternion.multiply(_q0.setFromAxisAngle(_xAxis, pitchOffset));
+    }
   } else {
     look.pitch = clamp(look.pitch, -85 * DEG, 85 * DEG);
     camera.quaternion.setFromEuler(new THREE.Euler(look.pitch, look.yaw, 0, 'YXZ'));
@@ -206,7 +229,7 @@ function recenter() {
     updateDeviceQuat();
     _fwd.set(0, 0, -1).applyQuaternion(deviceQuat);
     const yawDev = Math.atan2(-_fwd.x, -_fwd.z);
-    yawOffset = yaw0 - yawDev;
+    yawOffset = yaw0 - yawDev; pitchOffset = 0; // di nuovo dritti
   } else {
     look.yaw = yaw0; look.pitch = 0;
   }
@@ -214,7 +237,7 @@ function recenter() {
 }
 
 // ---------- gesti ----------
-// mono: trascina = guarda intorno, pizzica = zoom, tocco = mostra/nasconde comandi
+// mono: trascina = guarda intorno (anche col giroscopio attivo, in tutte le direzioni), pizzica = zoom, tocco = mostra/nasconde comandi, frecce ai lati = cambia vista
 // VR:   tocco = ricentra · scorri ↔ = cambia vista · tieni premuto = calibrazione sì/no · doppio tocco = esci
 // VR in calibrazione: 1 dito ↔ interasse, ↕ altezza · 2 dita = zoom · tieni premuto = fine calibrazione
 let dragging = false, lastX = 0, lastY = 0, startX = 0, startY = 0, startT = 0, pinchDist = 0, lastTap = 0, moved = 0, pointers = 0;
@@ -248,7 +271,7 @@ canvas.addEventListener('pointermove', (e) => {
     return; // con il giroscopio il trascinamento in VR serve solo a scorrere fra le viste
   }
   const k = (monoFov * DEG) / window.innerHeight; // radianti per pixel
-  if (gyroOn && gyroAvailable) yawOffset += dx * k;
+  if (gyroOn && gyroAvailable) { yawOffset += dx * k; pitchOffset = clamp(pitchOffset + dy * k, -PITCH_MAX, PITCH_MAX); }
   else { look.yaw += dx * k; look.pitch += dy * k; }
   needsRender = true;
 });
@@ -266,7 +289,7 @@ function endDrag(e) {
   }
   if (moved < 8) { // tocco semplice
     const now = performance.now();
-    if (pendingVR) { pendingVR = false; activateVR(); }
+    if (pendingVR) { pendingVR = false; activateVR().then(() => hud('Tocco: ricentra · Scorri: cambia vista\nTieni premuto: calibrazione · Doppio tocco: esci', 4500)); return; }
     if (now - lastTap < 320) { lastTap = 0; if (mode === 'vr') exitVR(); else toggleUI(); }
     else { lastTap = now; if (mode === 'vr') { if (!calMode) recenter(); } else showUI(); }
   }
@@ -447,7 +470,13 @@ function exitVR() {
   showUI();
 }
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && mode === 'vr' && !pendingVR) exitVR(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && mode === 'vr') exitVR(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && mode === 'vr') exitVR();
+  if (mode === 'mono' && listPanel.hidden && calPanel.hidden) {
+    if (e.key === 'ArrowRight') switchPano(1);
+    if (e.key === 'ArrowLeft') switchPano(-1);
+  }
+});
 function checkOrientation() { $('#rotate').hidden = !(mode === 'vr' && window.innerWidth < window.innerHeight); }
 
 // ---------- schermo sempre acceso ----------
@@ -503,6 +532,9 @@ $('#bFull').addEventListener('click', async () => {
 });
 $('#bCenter').addEventListener('click', () => { recenter(); showUI(); });
 $('#bCal').addEventListener('click', () => { openCal(); });
+// frecce ai lati dello schermo (modalità normale): vista precedente / successiva
+$('#prev').addEventListener('click', () => { switchPano(-1); showUI(); });
+$('#next').addEventListener('click', () => { switchPano(1); showUI(); });
 // elenco delle viste (modalità normale)
 const listPanel = $('#list');
 function openList() {
