@@ -19,7 +19,8 @@ window.VS_PANOS = {
   "1870_2ai": { year: "1870", n: 2, title: "Il parco di fine Ottocento", place: "Il prato · prova fotorealistica (AI)", caption: "Il prato, il viale curvo in ghiaino verso la villa, le aiuole e la serra resi fotorealistici dall'AI; villa, cielo e geometria del render originale.", yaw0: 0, levels: [512, 2048], variant: true },
   "1950_1": { year: "1950", n: 1, title: "Il giardino delle statue", place: "Viale verso la villa", caption: "Il giardino nel Novecento: le statue sui piedistalli, i vialetti in ghiaia e la villa sul colle.", yaw0: 0, levels: [512, 2048] },
   "1950_1ai": { year: "1950", n: 1, title: "Il giardino delle statue", place: "Viale verso la villa · prova fotorealistica (AI)", caption: "La stessa vista rielaborata con l'intelligenza artificiale per materiali, vegetazione e cielo più realistici: prova di confronto.", yaw0: 0, levels: [512, 2048], variant: true },
-  "1950_2": { year: "1950", n: 2, title: "Il giardino delle statue", place: "Le aiuole fiorite", caption: "Le aiuole fiorite davanti alla villa, fra le statue del giardino.", yaw0: 0, levels: [512, 2048] }
+  "1950_2": { year: "1950", n: 2, title: "Il giardino delle statue", place: "Le aiuole fiorite", caption: "Le aiuole fiorite davanti alla villa, fra le statue del giardino.", yaw0: 0, levels: [512, 2048] },
+  "1950_2ai": { year: "1950", n: 2, title: "Il giardino delle statue", place: "Le aiuole fiorite · prova fotorealistica (AI)", caption: "Le aiuole di rose e graminacee, i vialetti in ghiaino e le statue resi fotorealistici dall'AI; villa, serra, cielo e geometria del render originale.", yaw0: 0, levels: [512, 2048], variant: true }
 };
 // Ordine delle epoche nella linea del tempo
 window.VS_ERAS = ["1593", "1650", "1851", "1870", "1950"];
