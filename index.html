@@ -73,6 +73,20 @@ h1{margin:0;font:600 clamp(40px,9vw,64px)/.95 var(--serif);letter-spacing:.005em
 .how span{font-size:13.5px;color:var(--muted)}
 .how svg{width:28px;height:28px;fill:none;stroke:var(--fg);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;margin-bottom:6px;display:block}
 .note{margin-top:18px;font-size:13px;color:var(--muted);border-left:2px solid var(--accent);padding-left:10px}
+/* chi siamo */
+.about{margin-top:34px;padding-top:22px;border-top:1px solid var(--line);display:grid;grid-template-columns:minmax(0,1fr);gap:14px 28px}
+@media (min-width:700px){.about{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}.about .ab-h{grid-column:1/-1}}
+.about .ab-h{display:flex;align-items:baseline;gap:12px}
+.about h2{margin:0;font:600 34px/1 var(--serif)}
+.about .ab-h span{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.about h3{margin:0 0 6px;font:600 20px/1.15 var(--serif)}
+.about p{margin:0 0 10px;color:var(--muted);font-size:14.5px}
+.about p b{color:var(--fg);font-weight:500}
+.about .ab-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.about .ab-links a{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;border:1px solid var(--line);text-decoration:none;font:500 13.5px/1 var(--sans);letter-spacing:.04em;background:rgba(255,255,255,.05)}
+.about .ab-links svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.about .ab-logo{height:30px;display:block;margin:2px 0 12px}
+footer a{text-decoration:none;border-bottom:1px solid var(--line)}
 footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between;font-size:12.5px;color:var(--muted)}
 footer img{height:22px;vertical-align:middle;margin-right:8px}
 @media (prefers-reduced-motion:no-preference){.card{transition:transform .2s}.card:hover{transform:translateY(-2px)}}
@@ -118,8 +132,25 @@ footer img{height:22px;vertical-align:middle;margin-right:8px}
 </section>
 <p class="note">Su iPhone, per lo schermo intero: condividi → «Aggiungi alla schermata Home» e apri da lì.</p>
 
+<section class="about" id="chi-siamo" aria-label="Chi siamo">
+  <div class="ab-h"><h2>Chi siamo</h2><span>FAR3D graphic &amp; design</span></div>
+  <div>
+    <img class="ab-logo" src="img/far3d_white.png" alt="FAR3D graphic & design">
+    <p><b>FAR3D</b> è il marchio con cui l'arch. Alberto Sguotti (Ordine degli Architetti di Padova), con studio a Conselve, riunisce rilievo digitale, ricostruzione tridimensionale e comunicazione visiva dell'architettura: nuvole di punti da scanner SLAM e fotogrammetria da drone, modelli 3D e BIM, immagini, video e visite immersive a 360°, fino ai supporti per vederle — come gli occhiali VR pieghevoli con cui è pensato questo sito.</p>
+    <div class="ab-links">
+      <a href="https://far3d.it" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="9" ry="3.5"/><path d="M12 3v18"/></svg>far3d.it</a>
+      <a href="https://albertosguottiarchitetto.it" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M4 21V8l8-5 8 5v13"/><path d="M9 21v-7h6v7"/></svg>albertosguottiarchitetto.it</a>
+    </div>
+  </div>
+  <div>
+    <h3>Il progetto Villa Selvatico</h3>
+    <p>Il sito nasce dal progetto di digitalizzazione di Villa Selvatico a Battaglia Terme, bene storico vincolato, e da oltre dieci anni di approfondimenti progettuali e conoscitivi condotti con la proprietà: la ricerca storica sulla ricostruzione della prima villa, poi ripresa in un lavoro del Dipartimento dei Beni Culturali dell'Università di Padova, il video <i>Villa Selvatico nei secoli</i> e il modello tridimensionale della villa e del giardino nelle sue fasi, dal 1593 al Novecento, da cui sono tratte le viste a 360°.</p>
+    <p>Le <b>prove fotorealistiche</b> sono elaborazioni dei render del modello con l'intelligenza artificiale: materiali, vegetazione e luce sono interpretati, mentre la geometria dell'architettura, il cielo e i punti di vista restano quelli del modello. Vanno lette come concept, non come documenti.</p>
+  </div>
+</section>
+
 <footer>
-  <div><img src="img/far3d_mark_white.png" alt="FAR3D">graphic &amp; design · arch. Alberto Sguotti</div>
+  <div><img src="img/far3d_mark_white.png" alt="FAR3D">graphic &amp; design · arch. Alberto Sguotti · <a href="#chi-siamo">chi siamo</a></div>
   <div>Ricostruzioni 3D e viste 360° · Villa Selvatico, Battaglia Terme</div>
 </footer>
 </div>
